@@ -113,14 +113,14 @@ namespace HttpFaultInjector
 
                     foreach (var header in request.Headers.Where(h => _contentRequestHeaders.Contains(h.Key)))
                     {
-                        Log($"  {header.Key}:{header.Value}");
+                        Log($"  {header.Key}:{header.Value.First()}");
                         upstreamRequest.Content.Headers.Add(header.Key, values: header.Value);
                     }
                 }
 
                 foreach (var header in request.Headers.Where(h => !_excludedRequestHeaders.Contains(h.Key) && !_contentRequestHeaders.Contains(h.Key)))
                 {
-                    Log($"  {header.Key}:{header.Value}");
+                    Log($"  {header.Key}:{header.Value.First()}");
                     if (!upstreamRequest.Headers.TryAddWithoutValidation(header.Key, values: header.Value))
                     {
                         throw new InvalidOperationException($"Could not add header {header.Key} with value {header.Value}");
@@ -138,7 +138,7 @@ namespace HttpFaultInjector
                     Log("Headers:");
                     foreach (var header in upstreamResponseMessage.Headers)
                     {
-                        Log($"  {header.Key}:{header.Value}");
+                        Log($"  {header.Key}:{header.Value.First()}");
 
                         // Must skip "Transfer-Encoding" header, since if it's set manually Kestrel requires you to implement
                         // your own chunking.
@@ -152,7 +152,7 @@ namespace HttpFaultInjector
 
                     foreach (var header in upstreamResponseMessage.Content.Headers)
                     {
-                        Log($"  {header.Key}:{header.Value}");
+                        Log($"  {header.Key}:{header.Value.First()}");
                         headers.Add(new KeyValuePair<string, StringValues>(header.Key, header.Value.ToArray()));
                     }
 
