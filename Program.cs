@@ -64,8 +64,17 @@ namespace HttpFaultInjector
                                 case 'f':
                                     await SendDownstreamResponse(upstreamResponse, context.Response);
                                     return;
+                                case 'p':
+                                    // Send a partial response then wait a very long time, which is equivalent to never finishing the response
+                                    await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
+                                    await Task.Delay(TimeSpan.FromDays(1));
+                                    return;
                                 case 'a':
                                     context.Abort();
+                                    return;
+                                case 'n':
+                                    // Wait a very long time, which is equivalent to never sending a response
+                                    await Task.Delay(TimeSpan.FromDays(1));
                                     return;
                                 default:
                                     Console.WriteLine($"Invalid selection: {key.KeyChar}");
@@ -172,7 +181,7 @@ namespace HttpFaultInjector
             }
         }
 
-        private static async Task SendDownstreamResponse(UpstreamResponse upstreamResponse, HttpResponse response)
+        private static async Task SendDownstreamResponse(UpstreamResponse upstreamResponse, HttpResponse response, int? contentBytes = null)
         {
             Log("Sending downstream response...");
 
@@ -187,8 +196,9 @@ namespace HttpFaultInjector
                 response.Headers.Add(header.Key, header.Value);
             }
 
-            Log($"Writing response body of {upstreamResponse.Content.Length} bytes...");
-            await response.Body.WriteAsync(upstreamResponse.Content, 0, upstreamResponse.Content.Length);
+            var count = contentBytes ?? upstreamResponse.Content.Length;
+            Log($"Writing response body of {count} bytes...");
+            await response.Body.WriteAsync(upstreamResponse.Content, 0, count);
             Log($"Finished writing response body");
         }
 
