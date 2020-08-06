@@ -85,7 +85,10 @@ At the last step in your http client pipeline:
 1. Set the `Host` header to the upstream host the proxy should redirect to.  This should be the host from the URI you are requesting.
 2. Change the host and port in the URI to the HttpFaultInjector
 
-### .NET Example
+## Runnable Sample Clients
+* .NET: https://github.com/mikeharder/HttpFaultInjector/tree/master/samples/net
+
+## .NET Sample Client
 ```C#
 static async Task Main(string[] args)
 {
