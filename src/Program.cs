@@ -75,7 +75,6 @@ namespace HttpFaultInjector
                                     await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
                                     context.Abort();
                                     return;
-
                                 case 'a':
                                     context.Abort();
                                     return;
@@ -87,7 +86,6 @@ namespace HttpFaultInjector
                                     Console.WriteLine($"Invalid selection: {key.KeyChar}");
                                     break;
                             }
-
                         }
                     }
                     catch (Exception e)
