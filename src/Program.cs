@@ -52,6 +52,7 @@ namespace HttpFaultInjector
                         Console.WriteLine("Press a key to select a response:");
                         Console.WriteLine("f: Full response");
                         Console.WriteLine("p: Partial Response (full response headers, 50% of body)");
+                        Console.WriteLine("r: Partial Response then abort connection");
                         Console.WriteLine("n: No response");
                         Console.WriteLine("a: Abort connection");
 
@@ -69,6 +70,12 @@ namespace HttpFaultInjector
                                     await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
                                     await Task.Delay(TimeSpan.FromDays(1));
                                     return;
+                                case 'r':
+                                    // Send a partial response then abort.
+                                    await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
+                                    context.Abort();
+                                    return;
+
                                 case 'a':
                                     context.Abort();
                                     return;
