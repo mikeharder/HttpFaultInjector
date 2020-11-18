@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Primitives;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -21,6 +22,17 @@ namespace HttpFaultInjector
     {
         private static readonly HttpClient _httpClient = new HttpClient();
 
+        private static IList<KeyValuePair<string, string>> _selectionDescriptions = new List<KeyValuePair<string, string>>()
+        {
+            new KeyValuePair<string, string>("f", "Full response"),
+            new KeyValuePair<string, string>("p", "Partial Response (full headers, 50% of body), then wait indefinitely"),
+            new KeyValuePair<string, string>("pc", "Partial Response (full headers, 50% of body), then close (TCP FIN)"),
+            new KeyValuePair<string, string>("pa", "Partial Response (full headers, 50% of body), then abort (TCP RST)"),
+            new KeyValuePair<string, string>("n", "No response, then wait indefinitely"),
+            new KeyValuePair<string, string>("nc", "No response, then close (TCP FIN)"),
+            new KeyValuePair<string, string>("na", "No response, then abort (TCP RST)")
+        };
+
         private static readonly string[] _excludedRequestHeaders = new string[] {
             // Only applies to request between client and proxy
             "Proxy-Connection",
@@ -31,6 +43,8 @@ namespace HttpFaultInjector
             "Content-Length",
             "Content-Type",
         };
+
+        private static readonly string _responseSelectionHeader = "x-ms-faultinjector-response-option";
 
         public static void Main(string[] args)
         {
@@ -48,60 +62,35 @@ namespace HttpFaultInjector
                 {
                     try
                     {
-
                         var upstreamResponse = await SendUpstreamRequest(context.Request);
-
-                        Console.WriteLine();
-
-                        Console.WriteLine("Select a response then press ENTER:");
-                        Console.WriteLine("f: Full response");
-                        Console.WriteLine("p: Partial Response (full headers, 50% of body), then wait indefinitely");
-                        Console.WriteLine("pc: Partial Response (full headers, 50% of body), then close (TCP FIN)");
-                        Console.WriteLine("pa: Partial Response (full headers, 50% of body), then abort (TCP RST)");
-                        Console.WriteLine("n: No response, then wait indefinitely");
-                        Console.WriteLine("nc: No response, then close (TCP FIN)");
-                        Console.WriteLine("na: No response, then abort (TCP RST)");
-
-                        while (true)
+                        
+                        // Attempt to remove the response selection header and use its value to handle the response selection.
+                        if (context.Request.Headers.Remove(_responseSelectionHeader, out var selection))
                         {
-                            var selection = Console.ReadLine();
+                            string optionDescription = _selectionDescriptions.FirstOrDefault(kvp => kvp.Key.Equals(selection)).Value;
+                            if (!String.IsNullOrEmpty(optionDescription) && await TryHandleResponseOption(selection, context, upstreamResponse))
+							{
+                                Console.WriteLine($"Using response option {_selectionDescriptions.First().Value} from header value.");
+                                return;
+                            }
+                        }
 
-                            switch (selection)
+                        // If we were passed an invalid response selection header, or none, continue prompting the user for input and attempt to handle the response.
+                        while (true)
+						{
+                            Console.WriteLine();
+
+                            Console.WriteLine("Select a response then press ENTER:");
+                            foreach (KeyValuePair<string, string> kvp in _selectionDescriptions)
                             {
-                                case "f":
-                                    // Full response
-                                    await SendDownstreamResponse(upstreamResponse, context.Response);
-                                    return;
-                                case "p":
-                                    // Partial Response (full headers, 50% of body), then wait indefinitely
-                                    await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
-                                    await Task.Delay(Timeout.InfiniteTimeSpan);
-                                    return;
-                                case "pc":
-                                    // Partial Response (full headers, 50% of body), then close (TCP FIN)
-                                    await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
-                                    Close(context);
-                                    return;
-                                case "pa":
-                                    // Partial Response (full headers, 50% of body), then abort (TCP RST)
-                                    await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
-                                    Abort(context);
-                                    return;
-                                case "n":
-                                    // No response, then wait indefinitely
-                                    await Task.Delay(Timeout.InfiniteTimeSpan);
-                                    return;
-                                case "nc":
-                                    // No response, then close (TCP FIN)
-                                    Close(context);
-                                    return;
-                                case "na":
-                                    // No response, then abort (TCP RST)
-                                    Abort(context);
-                                    return;
-                                default:
-                                    Console.WriteLine($"Invalid selection: {selection}");
-                                    break;
+                                Console.WriteLine($"{kvp.Key}: {kvp.Value}");
+                            }
+
+                            selection = Console.ReadLine();
+
+                            if (await TryHandleResponseOption(selection, context, upstreamResponse))
+                            {
+                                return;
                             }
                         }
                     }
@@ -149,7 +138,7 @@ namespace HttpFaultInjector
                     }
                 }
 
-                foreach (var header in request.Headers.Where(h => !_excludedRequestHeaders.Contains(h.Key) && !_contentRequestHeaders.Contains(h.Key)))
+                foreach (var header in request.Headers.Where(h => !_excludedRequestHeaders.Contains(h.Key) && !_contentRequestHeaders.Contains(h.Key) && !h.Key.Equals(_responseSelectionHeader)))
                 {
                     Log($"  {header.Key}:{header.Value.First()}");
                     if (!upstreamRequest.Headers.TryAddWithoutValidation(header.Key, values: header.Value))
@@ -200,6 +189,47 @@ namespace HttpFaultInjector
 
                     return upstreamResponse;
                 }
+            }
+        }
+
+        private static async Task<bool> TryHandleResponseOption(string selection, HttpContext context, UpstreamResponse upstreamResponse)
+		{
+            switch (selection)
+            {
+                case "f":
+                    // Full response
+                    await SendDownstreamResponse(upstreamResponse, context.Response);
+                    return true;
+                case "p":
+                    // Partial Response (full headers, 50% of body), then wait indefinitely
+                    await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
+                    await Task.Delay(Timeout.InfiniteTimeSpan);
+                    return true;
+                case "pc":
+                    // Partial Response (full headers, 50% of body), then close (TCP FIN)
+                    await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
+                    Close(context);
+                    return true;
+                case "pa":
+                    // Partial Response (full headers, 50% of body), then abort (TCP RST)
+                    await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
+                    Abort(context);
+                    return true;
+                case "n":
+                    // No response, then wait indefinitely
+                    await Task.Delay(Timeout.InfiniteTimeSpan);
+                    return true;
+                case "nc":
+                    // No response, then close (TCP FIN)
+                    Close(context);
+                    return true;
+                case "na":
+                    // No response, then abort (TCP RST)
+                    Abort(context);
+                    return true;
+                default:
+                    Console.WriteLine($"Invalid selection: {selection}");
+                    return false;
             }
         }
 
