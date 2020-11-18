@@ -12,6 +12,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace HttpFaultInjector
@@ -74,7 +75,7 @@ namespace HttpFaultInjector
                                 case "p":
                                     // Partial Response (full headers, 50% of body), then wait indefinitely
                                     await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
-                                    await Task.Delay(TimeSpan.MaxValue);
+                                    await Task.Delay(Timeout.InfiniteTimeSpan);
                                     return;
                                 case "pc":
                                     // Partial Response (full headers, 50% of body), then close (TCP FIN)
@@ -88,7 +89,7 @@ namespace HttpFaultInjector
                                     return;
                                 case "n":
                                     // No response, then wait indefinitely
-                                    await Task.Delay(TimeSpan.MaxValue);
+                                    await Task.Delay(Timeout.InfiniteTimeSpan);
                                     return;
                                 case "nc":
                                     // No response, then close (TCP FIN)
