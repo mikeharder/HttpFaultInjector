@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Connections.Features;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
@@ -9,11 +10,13 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
+using System.Reflection;
 using System.Threading.Tasks;
 
 namespace HttpFaultInjector
 {
-    public class Program
+    public static class Program
     {
         private static readonly HttpClient _httpClient = new HttpClient();
 
@@ -49,41 +52,54 @@ namespace HttpFaultInjector
 
                         Console.WriteLine();
 
-                        Console.WriteLine("Press a key to select a response:");
+                        Console.WriteLine("Select a response then press ENTER:");
                         Console.WriteLine("f: Full response");
-                        Console.WriteLine("p: Partial Response (full response headers, 50% of body)");
-                        Console.WriteLine("r: Partial Response then abort connection");
-                        Console.WriteLine("n: No response");
-                        Console.WriteLine("a: Abort connection");
+                        Console.WriteLine("p: Partial Response (full headers, 50% of body), then wait indefinitely");
+                        Console.WriteLine("pc: Partial Response (full headers, 50% of body), then close (TCP FIN)");
+                        Console.WriteLine("pa: Partial Response (full headers, 50% of body), then abort (TCP RST)");
+                        Console.WriteLine("n: No response, then wait indefinitely");
+                        Console.WriteLine("nc: No response, then close (TCP FIN)");
+                        Console.WriteLine("na: No response, then abort (TCP RST)");
 
                         while (true)
                         {
-                            var key = Console.ReadKey();
+                            var selection = Console.ReadLine();
 
-                            switch (key.KeyChar)
+                            switch (selection)
                             {
-                                case 'f':
+                                case "f":
+                                    // Full response
                                     await SendDownstreamResponse(upstreamResponse, context.Response);
                                     return;
-                                case 'p':
-                                    // Send a partial response then wait a very long time, which is equivalent to never finishing the response
+                                case "p":
+                                    // Partial Response (full headers, 50% of body), then wait indefinitely
                                     await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
-                                    await Task.Delay(TimeSpan.FromDays(1));
+                                    await Task.Delay(TimeSpan.MaxValue);
                                     return;
-                                case 'r':
-                                    // Send a partial response then abort.
+                                case "pc":
+                                    // Partial Response (full headers, 50% of body), then close (TCP FIN)
                                     await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
-                                    context.Abort();
+                                    Close(context);
                                     return;
-                                case 'a':
-                                    context.Abort();
+                                case "pa":
+                                    // Partial Response (full headers, 50% of body), then abort (TCP RST)
+                                    await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
+                                    Abort(context);
                                     return;
-                                case 'n':
-                                    // Wait a very long time, which is equivalent to never sending a response
-                                    await Task.Delay(TimeSpan.FromDays(1));
+                                case "n":
+                                    // No response, then wait indefinitely
+                                    await Task.Delay(TimeSpan.MaxValue);
+                                    return;
+                                case "nc":
+                                    // No response, then close (TCP FIN)
+                                    Close(context);
+                                    return;
+                                case "na":
+                                    // No response, then abort (TCP RST)
+                                    Abort(context);
                                     return;
                                 default:
-                                    Console.WriteLine($"Invalid selection: {key.KeyChar}");
+                                    Console.WriteLine($"Invalid selection: {selection}");
                                     break;
                             }
                         }
@@ -205,6 +221,22 @@ namespace HttpFaultInjector
             Log($"Writing response body of {count} bytes...");
             await response.Body.WriteAsync(upstreamResponse.Content, 0, count);
             Log($"Finished writing response body");
+        }
+
+        // Close the TCP connection by sending FIN
+        private static void Close(HttpContext context)
+        {
+            context.Abort();
+        }
+
+        // Abort the TCP connection by sending RST
+        private static void Abort(HttpContext context)
+        {
+            // SocketConnection registered "this" as the IConnectionIdFeature among other things.
+            var socketConnection = context.Features.Get<IConnectionIdFeature>();
+            var socket = (Socket)socketConnection.GetType().GetField("_socket", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(socketConnection);
+            socket.LingerState = new LingerOption(true, 0);
+            socket.Dispose();
         }
 
         private static void Log(object value)
