@@ -1,3 +1,4 @@
+using CommandLine;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Connections.Features;
 using Microsoft.AspNetCore.Hosting;
@@ -46,16 +47,34 @@ namespace HttpFaultInjector
 
         private const string _responseSelectionHeader = "x-ms-faultinjector-response-option";
 
+        private class Options {
+            [Option('t', "keep-alive-timeout", Default = 120, HelpText = "Keep-alive timeout (in seconds)")]
+            public int KeepAliveTimeout { get; set; }
+        }
+
         public static void Main(string[] args)
         {
+            var parser = new Parser(settings =>
+            {
+                settings.CaseSensitive = false;
+                settings.HelpWriter = Console.Error;
+            });
+
+            parser.ParseArguments<Options>(args).WithParsed(options => Run(options));
+        }
+
+        private static void Run(Options options)
+        {
             new WebHostBuilder()
-                .UseKestrel(options =>
+                .UseKestrel(kestrelOptions =>
                 {
-                    options.Listen(IPAddress.Any, 7777);
-                    options.Listen(IPAddress.Any, 7778, listenOptions =>
+                    kestrelOptions.Listen(IPAddress.Any, 7777);
+                    kestrelOptions.Listen(IPAddress.Any, 7778, listenOptions =>
                     {
                         listenOptions.UseHttps("testCert.pfx", "testPassword");
                     });
+
+                    kestrelOptions.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(options.KeepAliveTimeout);
                 })
                 .UseContentRoot(Directory.GetCurrentDirectory())
                 .Configure(app => app.Run(async context =>
