@@ -60,7 +60,7 @@ namespace HttpFaultInjector
                 settings.HelpWriter = Console.Error;
             });
 
-            var result = parser.ParseArguments<Options>(args).WithParsed(options => Run(options));
+            parser.ParseArguments<Options>(args).WithParsed(options => Run(options));
         }
 
         private static void Run(Options options)
