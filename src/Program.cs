@@ -20,7 +20,7 @@ namespace HttpFaultInjector
 {
     public static class Program
     {
-        private static readonly HttpClient _httpClient = new HttpClient();
+        private static HttpClient _httpClient;
 
         private static readonly List<(string Option, string Description)> _selectionDescriptions = new List<(string Option, string Description)>()
         {
@@ -47,7 +47,11 @@ namespace HttpFaultInjector
 
         private const string _responseSelectionHeader = "x-ms-faultinjector-response-option";
 
-        private class Options {
+        private class Options
+        {
+            [Option('i', "insecure", Default = false, HelpText = "Allow insecure upstream SSL certs")]
+            public bool Insecure { get; set; }
+
             [Option('t', "keep-alive-timeout", Default = 120, HelpText = "Keep-alive timeout (in seconds)")]
             public int KeepAliveTimeout { get; set; }
         }
@@ -65,14 +69,28 @@ namespace HttpFaultInjector
 
         private static void Run(Options options)
         {
+            if (options.Insecure)
+            {
+                _httpClient = new HttpClient(new HttpClientHandler()
+                {
+                    // Allow insecure SSL certs
+                    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+                });
+            }
+            else
+            {
+                _httpClient = new HttpClient();
+            }
+
+
             new WebHostBuilder()
                 .UseKestrel(kestrelOptions =>
                 {
                     kestrelOptions.Listen(IPAddress.Any, 7777);
                     kestrelOptions.Listen(IPAddress.Any, 7778, listenOptions =>
-                    {
-                        listenOptions.UseHttps("testCert.pfx", "testPassword");
-                    });
+                {
+                    listenOptions.UseHttps("testCert.pfx", "testPassword");
+                });
 
                     kestrelOptions.Limits.KeepAliveTimeout = TimeSpan.FromSeconds(options.KeepAliveTimeout);
                 })
