@@ -32,8 +32,8 @@ namespace HttpFaultInjectorClient
 
             protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             {
-                // Set "Host" header to upstream host
-                request.Headers.Add("Host", request.RequestUri.Host);
+                // Set "Host" header to upstream host:port
+                request.Headers.Add("Host", $"{request.RequestUri.Host}:{request.RequestUri.Port}");
 
                 // Set URI to fault injector
                 var builder = new UriBuilder(request.RequestUri)
