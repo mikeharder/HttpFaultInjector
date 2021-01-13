@@ -28,6 +28,7 @@ namespace HttpFaultInjector
             ("p", "Partial Response (full headers, 50% of body), then wait indefinitely"),
             ("pc", "Partial Response (full headers, 50% of body), then close (TCP FIN)"),
             ("pa", "Partial Response (full headers, 50% of body), then abort (TCP RST)"),
+            ("pn", "Partial Response (full headers, 50% of body), then finish normally"),
             ("n", "No response, then wait indefinitely"),
             ("nc", "No response, then close (TCP FIN)"),
             ("na", "No response, then abort (TCP RST)")
@@ -255,6 +256,10 @@ namespace HttpFaultInjector
                     // Partial Response (full headers, 50% of body), then abort (TCP RST)
                     await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
                     Abort(context);
+                    return true;
+                case "pn":
+                    // Partial Response (full headers, 50% of body), then finish normally
+                    await SendDownstreamResponse(upstreamResponse, context.Response, upstreamResponse.Content.Length / 2);
                     return true;
                 case "n":
                     // No response, then wait indefinitely
