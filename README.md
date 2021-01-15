@@ -1,4 +1,6 @@
-# HttpFaultInjector
+# HttpFaultInjector [Archived]
+
+**This GitHub project has been archived.**  Active development has moved to <https://github.com/Azure/azure-sdk-tools/tree/master/tools/http-fault-injector>
 
 HttpFaultInjector is used to test the behavior of HTTP clients in response to server "faults" like:
 
